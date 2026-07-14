@@ -74,24 +74,30 @@ class Gateway:
 
     async def run(self) -> None:
         self._loop = asyncio.get_running_loop()
-        self._sip.start()
-        await self._tg_sig.start()
-        log.info("gateway up (SIP↔TG); SIP→TG fallback uid=%s, TG→SIP routes=%d",
-                 self._cfg.telegram.forward_user_id or "none",
-                 len(self._cfg.telegram.inbound_routes))
-        cp = self._cfg.telegram.call_protocol
-        log.info("offering call_protocol: layers=%s-%s versions=%s",
-                 cp.get("min_layer"), cp.get("max_layer"),
-                 list(cp.get("library_versions") or []))
-
-        stop_event = asyncio.Event()
+        tg_started = False
         try:
+            self._sip.start()
+            await self._tg_sig.start()
+            tg_started = True
+            log.info("gateway up (SIP↔TG); SIP→TG fallback uid=%s, TG→SIP routes=%d",
+                     self._cfg.telegram.forward_user_id or "none",
+                     len(self._cfg.telegram.inbound_routes))
+            cp = self._cfg.telegram.call_protocol
+            log.info("offering call_protocol: layers=%s-%s versions=%s",
+                     cp.get("min_layer"), cp.get("max_layer"),
+                     list(cp.get("library_versions") or []))
+
+            stop_event = asyncio.Event()
             await stop_event.wait()
         except asyncio.CancelledError:
             pass
         finally:
             await self._teardown()
-            await self._tg_sig.stop()
+            if tg_started:
+                try:
+                    await self._tg_sig.stop()
+                except Exception as e:  # noqa: BLE001
+                    log.warning("telegram shutdown failed: %s", e)
             self._sip.stop()
 
     def _on_incoming_sip_threadsafe(self, ic: IncomingCall, call: SipCall) -> None:
@@ -221,6 +227,16 @@ class Gateway:
                 return
             self._state = State.TG_RINGING
         self._incoming_task = asyncio.create_task(self._spawn_sip_call(incoming))
+        self._incoming_task.add_done_callback(self._incoming_task_done)
+
+    def _incoming_task_done(self, task: asyncio.Task) -> None:
+        if self._incoming_task is task:
+            self._incoming_task = None
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            log.error("unhandled TG→SIP setup failure", exc_info=exc)
 
     async def _pick_sip_dest(self, caller_id: int) -> Optional[str]:
         """Map an inbound TG caller to a SIP destination via inbound_routes. Keys
@@ -403,19 +419,35 @@ class Gateway:
             self._state = State.TEARDOWN
 
         log.info("teardown starting")
-        if self._tg_media:
-            await self._tg_media.stop()
-            self._tg_media = None
-        await self._tg_sig.discard_call()
-        if self._playback:
-            self._playback.clear()
-            self._playback = None
-        if self._sip_call:
+        incoming_task = self._incoming_task
+        if (incoming_task is not None
+                and incoming_task is not asyncio.current_task()
+                and not incoming_task.done()):
+            incoming_task.cancel()
+
+        media, self._tg_media = self._tg_media, None
+        if media is not None:
             try:
-                self._sip_call.end()
-            except Exception:  # noqa: BLE001
-                pass
-            self._sip_call = None
+                await media.stop()
+            except Exception as e:  # noqa: BLE001
+                log.warning("ntgcalls teardown failed: %s", e)
+
+        try:
+            await self._tg_sig.discard_call()
+        except Exception as e:  # noqa: BLE001
+            log.warning("telegram call teardown failed: %s", e)
+
+        playback, self._playback = self._playback, None
+        if playback is not None:
+            playback.clear()
+
+        sip_call, self._sip_call = self._sip_call, None
+        if sip_call is not None:
+            try:
+                sip_call.end()
+            except Exception as e:  # noqa: BLE001
+                log.warning("sip call teardown failed: %s", e)
+
         self._sip_port = None
         self._active_uid = None
 

@@ -247,12 +247,22 @@ class SipAgent:
         acc_cfg = pj.AccountConfig()
         acc_cfg.idUri = f"sip:{self._cfg.username}@{self._cfg.domain}"
         acc_cfg.regConfig.registrarUri = f"sip:{self._cfg.registrar}"
+        rtp_start, rtp_end = self._cfg.rtp_port_range
+        if not (0 < rtp_start < rtp_end <= 65535) or rtp_start % 2:
+            raise ValueError(
+                f"invalid RTP port range {self._cfg.rtp_port_range!r}"
+            )
+        acc_cfg.mediaConfig.transportConfig.port = rtp_start
+        # PJSIP interprets portRange as the maximum offset from the base port;
+        # RTP uses even ports and RTCP the following odd ports.
+        acc_cfg.mediaConfig.transportConfig.portRange = rtp_end - rtp_start
         cred = pj.AuthCredInfo("digest", "*", self._cfg.username, 0, self._cfg.password)
         acc_cfg.sipConfig.authCreds.append(cred)
 
         self._acc = _Account(self._on_incoming)
         self._acc.create(acc_cfg)
-        log.info("registering as %s", acc_cfg.idUri)
+        log.info("registering as %s (RTP/RTCP ports %d-%d)",
+                 acc_cfg.idUri, rtp_start, rtp_end)
 
     def stop(self) -> None:
         with self._lock:

@@ -24,7 +24,15 @@ async def amain() -> None:
         loop.add_signal_handler(sig, _request_stop)
 
     runner = asyncio.create_task(gw.run())
-    await stop
+    done, _ = await asyncio.wait(
+        {runner, stop}, return_when=asyncio.FIRST_COMPLETED
+    )
+    if runner in done:
+        # Propagate startup/runtime failures instead of leaving a non-functional
+        # container alive while Docker believes the service is healthy.
+        await runner
+        return
+
     runner.cancel()
     try:
         await runner

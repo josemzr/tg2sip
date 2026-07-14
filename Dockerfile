@@ -98,9 +98,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && pip install --no-cache-dir /tmp/wheels/*.whl \
     && rm -rf /tmp/wheels \
-    && python -c "import ntgcalls; ntgcalls.NTgCalls(); print('custom ntgcalls ok', getattr(ntgcalls,'__version__','?'))"
+    && python -c "import ntgcalls; ntgcalls.NTgCalls(); print('custom ntgcalls ok', getattr(ntgcalls,'__version__','?'))" \
+    && pip uninstall -y setuptools wheel \
+    && pip uninstall -y pip
 
 COPY src/ ./src/
+
+RUN python -m compileall -q src
 
 RUN useradd -m -u 1000 gw && mkdir -p /app/sessions /app/config && chown -R gw:gw /app
 USER gw
