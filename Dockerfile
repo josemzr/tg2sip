@@ -58,12 +58,6 @@ RUN git init ntgcalls \
     && git checkout FETCH_HEAD \
     && git submodule update --init --recursive --depth 1
 WORKDIR /build/ntgcalls
-COPY patches/ntgcalls-network-availability.patch /tmp/ntgcalls-network-availability.patch
-# Fix pytgcalls/ntgcalls#44: without this notification WebRTC can leave its
-# PacedSender paused even after ICE/DTLS reaches CONNECTED, yielding silence.
-RUN git apply --check /tmp/ntgcalls-network-availability.patch \
-    && git apply /tmp/ntgcalls-network-availability.patch \
-    && grep -q 'OnNetworkAvailability(isConnected)' wrtc/src/interfaces/native_network_interface.cpp
 # Remove ONLY the openh264 software encoder (decoder kept); forces VP8/VP9.
 RUN sed -i '/openh264::addEncoders/d' wrtc/src/video_factory/video_factory_config.cpp \
     && ! grep -q 'openh264::addEncoders' wrtc/src/video_factory/video_factory_config.cpp \
