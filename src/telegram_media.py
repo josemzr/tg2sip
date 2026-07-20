@@ -78,6 +78,10 @@ class TelegramMedia:
         self._frame_bytes = sample_rate // 100 * 2 * channels
         self._capture_buf = bytearray()
         self._rx_frames = 0
+        self._rx_bytes = 0
+        self._rx_non_silent_frames = 0
+        self._tx_frames = 0
+        self._tx_bytes = 0
         self._on_state: Optional[Callable[[str], None]] = None
         self._sig_sender = None
         self._tx_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
@@ -198,7 +202,6 @@ class TelegramMedia:
 
     async def _tx_pump(self) -> None:
         frame_data = ntgcalls.FrameData(0, 0, 0, 0)
-        sent = 0
         while True:
             chunk = await self._tx_queue.get()
             if chunk is None or self._user_id is None:
@@ -212,11 +215,12 @@ class TelegramMedia:
                     chunk,
                     frame_data,
                 )
-                sent += 1
-                if sent == 1:
+                self._tx_frames += 1
+                self._tx_bytes += len(chunk)
+                if self._tx_frames == 1:
                     log.debug("bridge: first frame sent to ntgcalls (%d bytes)", len(chunk))
-                elif sent % 500 == 0:
-                    log.debug("bridge sip→tg frames sent=%d", sent)
+                elif self._tx_frames % 500 == 0:
+                    log.debug("bridge sip→tg frames sent=%d", self._tx_frames)
             except asyncio.CancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
@@ -231,6 +235,9 @@ class TelegramMedia:
             data = f.data
             if data:
                 self._rx_frames += 1
+                self._rx_bytes += len(data)
+                if any(data):
+                    self._rx_non_silent_frames += 1
                 if self._rx_frames == 1:
                     log.debug("bridge: first frame received from ntgcalls (%d bytes)", len(data))
                 elif self._rx_frames % 500 == 0:
@@ -441,6 +448,15 @@ class TelegramMedia:
         return ntgcalls.MediaDescription(microphone=self._audio_external())
 
     async def stop(self) -> None:
+        log.info(
+            "bridge summary: sip→tg frames=%d bytes=%d; "
+            "tg→sip frames=%d bytes=%d non_silent_frames=%d; "
+            "playback pushed=%d pulled=%d underruns=%d dropped=%d",
+            self._tx_frames, self._tx_bytes,
+            self._rx_frames, self._rx_bytes, self._rx_non_silent_frames,
+            self._playback.pushed, self._playback.pulled,
+            self._playback.underruns, self._playback.dropped,
+        )
         proc = self._video_proc
         self._video_proc = None  # reader thread (daemon) exits on EOF
         if proc is not None:
