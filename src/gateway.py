@@ -186,12 +186,14 @@ class Gateway:
 
             # 4. Derive the key and confirm; ntgcalls connects to the relays.
             auth = await self._tg_media.exchange_keys(uid, g_b, 0)
-            connections, versions, p2p_allowed = await self._tg_sig.confirm_call(
+            connections, versions, p2p_allowed, custom_parameters = await self._tg_sig.confirm_call(
                 auth.g_a_or_b, auth.key_fingerprint, protocol
             )
             log.info("negotiated library_versions=%s; ntgcalls will use %s",
                      list(versions), _highest_version(versions))
-            await self._tg_media.connect(uid, connections, versions, p2p_allowed)
+            await self._tg_media.connect(
+                uid, connections, versions, p2p_allowed, custom_parameters
+            )
             self._tg_media.start_tx_pump()
             self._tg_media.start_video_feeder()
         except CallDiscardedError as e:
@@ -324,7 +326,8 @@ class Gateway:
                      _highest_version(est.protocol.library_versions))
             await self._tg_media.connect(
                 incoming.caller_id, est.connections,
-                est.protocol.library_versions, est.p2p_allowed)
+                est.protocol.library_versions, est.p2p_allowed,
+                getattr(getattr(est, "custom_parameters", None), "data", None))
             self._tg_media.start_tx_pump()
             self._tg_media.start_video_feeder()  # doorbell camera → TG caller
         except CallDiscardedError as e:

@@ -135,6 +135,11 @@ class TelegramMedia:
         await self._ntg.set_stream_sources(
             user_id, ntgcalls.StreamMode.CAPTURE, self._capture_media()
         )
+        # The direct binding must advertise its incoming sink before channel
+        # negotiation; otherwise this P2P engine reaches TIMEOUT.
+        await self._ntg.set_stream_sources(
+            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
+        )
 
     async def init_exchange(self, user_id: int, g: int, p: bytes, random: bytes,
                             g_a_hash: Optional[bytes] = None) -> bytes:
@@ -149,20 +154,13 @@ class TelegramMedia:
         ``g_a_or_b`` (our g_a) and ``key_fingerprint`` go into phone.confirmCall."""
         return await self._ntg.exchange_keys(user_id, g_b, fingerprint)
 
-    async def connect(self, user_id: int, connections, versions, p2p_allowed: bool) -> None:
+    async def connect(self, user_id: int, connections, versions, p2p_allowed: bool,
+                      custom_parameters: Optional[str] = None) -> None:
         servers = _build_servers(connections)
-        # Telegram's custom network flags select standalone reflectors on some
-        # accounts, which repeatedly time out in this deployment. The default
-        # NTgCalls route is stable and was used by the original integration.
         await self._ntg.connect_p2p(
-            user_id, servers, list(versions), p2p_allowed, None
+            user_id, servers, list(versions), p2p_allowed, custom_parameters
         )
         await asyncio.wait_for(self._connection_ready, timeout=30.0)
-        # Match PyTgCalls' record() flow: attach the remote sink after the P2P
-        # connection reaches CONNECTED and has negotiated its incoming tracks.
-        await self._ntg.set_stream_sources(
-            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
-        )
         # Signaling object now exists; start ordered relay of both directions.
         # Any incoming blobs received earlier are still queued and get replayed.
         self._sig_out_task = asyncio.create_task(self._sig_out_pump())
