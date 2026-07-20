@@ -152,8 +152,9 @@ class TelegramMedia:
     async def connect(self, user_id: int, connections, versions, p2p_allowed: bool,
                       custom_parameters: Optional[str] = None) -> None:
         servers = _build_servers(connections)
+        # NTgCalls 2.1.0 predates Telegram's custom_parameters argument.
         await self._ntg.connect_p2p(
-            user_id, servers, list(versions), p2p_allowed, custom_parameters
+            user_id, servers, list(versions), p2p_allowed
         )
         # The known-working 1.3/2.1 flow attaches the remote sink after
         # connect_p2p has created the P2P connection, but before ICE signaling.

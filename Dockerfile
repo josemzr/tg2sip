@@ -39,11 +39,9 @@ RUN make python \
 # rebuild. All heavy deps (WebRTC, Clang, Boost, ffmpeg, GLib, X11, Mesa) are
 # downloaded prebuilt by cmake — only the small wrapper compiles here.
 FROM python:3.11-slim-bookworm AS ntgcalls-build
-# Pinned after v12/v13 protocol support and WRTC E2E frame decryption landed on
-# `dev` (pytgcalls/ntgcalls issues #46 and #44). Earlier commits connect but
-# decode incoming encrypted audio as silence. Bump together with config
-# library_versions. The init+fetch pattern accepts tags, branches, and SHAs.
-ARG NTGCALLS_VERSION=88a09d3a7b2f87a1a62afc1c2a967c24617f9be8
+# Pinned to the engine in the repository's working-audio-video-2.1.0-custom
+# tag. The 2.2.x receive path emits correctly timed but all-zero P2P PCM here.
+ARG NTGCALLS_VERSION=17f755231a3dab27c121153eab4b155639d24fcb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates build-essential python3-dev \
     libasound2-dev libpulse-dev flex libelf-dev texinfo \
@@ -58,11 +56,6 @@ RUN git init ntgcalls \
     && git checkout FETCH_HEAD \
     && git submodule update --init --recursive --depth 1
 WORKDIR /build/ntgcalls
-COPY patches/ntgcalls-network-availability.patch /tmp/ntgcalls-network-availability.patch
-# Keep WebRTC's sender available after ICE/DTLS connects (pytgcalls/ntgcalls#44).
-RUN git apply --check /tmp/ntgcalls-network-availability.patch \
-    && git apply /tmp/ntgcalls-network-availability.patch \
-    && grep -q 'OnNetworkAvailability(isConnected)' wrtc/src/interfaces/native_network_interface.cpp
 # Remove ONLY the openh264 software encoder (decoder kept); forces VP8/VP9.
 RUN sed -i '/openh264::addEncoders/d' wrtc/src/video_factory/video_factory_config.cpp \
     && ! grep -q 'openh264::addEncoders' wrtc/src/video_factory/video_factory_config.cpp \
