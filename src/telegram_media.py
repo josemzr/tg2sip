@@ -160,11 +160,12 @@ class TelegramMedia:
         await self._ntg.connect_p2p(
             user_id, servers, list(versions), p2p_allowed, custom_parameters
         )
-        await asyncio.wait_for(self._connection_ready, timeout=30.0)
         # Signaling object now exists; start ordered relay of both directions.
-        # Any incoming blobs received earlier are still queued and get replayed.
+        # ICE needs these pumps running in order to reach CONNECTED. Any incoming
+        # blobs received earlier are still queued and get replayed here.
         self._sig_out_task = asyncio.create_task(self._sig_out_pump())
         self._sig_in_task = asyncio.create_task(self._sig_in_pump())
+        await asyncio.wait_for(self._connection_ready, timeout=30.0)
         log.info("ntgcalls connect_p2p done (%d servers)", len(servers))
 
     # ---- audio --------------------------------------------------------------
