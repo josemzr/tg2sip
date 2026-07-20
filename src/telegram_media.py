@@ -129,6 +129,12 @@ class TelegramMedia:
         await self._ntg.set_stream_sources(
             user_id, ntgcalls.StreamMode.CAPTURE, self._capture_media()
         )
+        # connect_p2p calls optimizeSources(), which enables incoming audio only
+        # when a PLAYBACK writer already exists. Configuring this afterwards
+        # leaves the remote track disabled and sends silence toward SIP.
+        await self._ntg.set_stream_sources(
+            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
+        )
 
     async def init_exchange(self, user_id: int, g: int, p: bytes, random: bytes,
                             g_a_hash: Optional[bytes] = None) -> bytes:
@@ -148,17 +154,11 @@ class TelegramMedia:
         # ntgcalls v2.2+ added a 6th param `custom_parameters` (e.g. for the KCP
         # experiment); we don't use any so pass None.
         await self._ntg.connect_p2p(user_id, servers, list(versions), p2p_allowed, None)
-        # create_p2p_call only wired the capture (microphone) side; register the
-        # PLAYBACK source so remote audio is delivered as EXTERNAL frames via
-        # the on_frames callback (otherwise the SIP side only ever hears silence).
-        await self._ntg.set_stream_sources(
-            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
-        )
         # Signaling object now exists; start ordered relay of both directions.
         # Any incoming blobs received earlier are still queued and get replayed.
         self._sig_out_task = asyncio.create_task(self._sig_out_pump())
         self._sig_in_task = asyncio.create_task(self._sig_in_pump())
-        log.info("ntgcalls connect_p2p done (%d servers); playback source set", len(servers))
+        log.info("ntgcalls connect_p2p done (%d servers)", len(servers))
 
     # ---- audio --------------------------------------------------------------
 
