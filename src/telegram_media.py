@@ -337,6 +337,7 @@ class TelegramMedia:
             sample_rate=self._sr,
             channel_count=self._ch,
             input="",
+            keep_open=False,
         )
 
     def _capture_media(self) -> "ntgcalls.MediaDescription":
@@ -351,11 +352,16 @@ class TelegramMedia:
                 height=self._video.height,
                 fps=self._video.fps,
                 input="",
+                keep_open=False,
             )
             return ntgcalls.MediaDescription(
-                microphone=self._audio_external(), camera=video,
+                microphone=self._audio_external(), speaker=None,
+                camera=video, screen=None,
             )
-        return ntgcalls.MediaDescription(microphone=self._audio_external())
+        return ntgcalls.MediaDescription(
+            microphone=self._audio_external(), speaker=None,
+            camera=None, screen=None,
+        )
 
     @property
     def video_enabled(self) -> bool:
@@ -485,7 +491,10 @@ class TelegramMedia:
         # adds addTrack(Playback, Microphone) and optimizeSources only enables
         # incoming audio when Microphone is an external writer), so the playback
         # sink must be set on `microphone`, not `speaker`, to receive on_frames.
-        return ntgcalls.MediaDescription(microphone=self._audio_external())
+        return ntgcalls.MediaDescription(
+            microphone=self._audio_external(), speaker=None,
+            camera=None, screen=None,
+        )
 
     async def stop(self) -> None:
         log.info(
