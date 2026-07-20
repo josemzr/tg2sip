@@ -1,0 +1,17 @@
+diff --git a/ntgcalls/src/media/stream_manager.cpp b/ntgcalls/src/media/stream_manager.cpp
+--- a/ntgcalls/src/media/stream_manager.cpp
++++ b/ntgcalls/src/media/stream_manager.cpp
+@@ -387,8 +387,12 @@ namespace ntgcalls::media {
+             return;
+         }
+ 
+-        handle_capture_config(id, d, reason, stream_type, is_external);
++        if (mode == Capture) {
++            handle_capture_config(id, d, reason, stream_type, is_external);
++        } else {
++            handle_playback_config(id, d, reason, stream_type, is_external);
++        }
+     }
+ 
+     void StreamManager::handle_no_description(const Mode mode, const Device device) {
+         if (mode == Capture) {

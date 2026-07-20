@@ -57,9 +57,13 @@ RUN git init ntgcalls \
     && git submodule update --init --recursive --depth 1
 WORKDIR /build/ntgcalls
 # Remove ONLY the openh264 software encoder (decoder kept); forces VP8/VP9.
-RUN sed -i '/openh264::addEncoders/d' wrtc/src/video_factory/video_factory_config.cpp \
+COPY patches/ntgcalls-playback-config.patch /tmp/ntgcalls-playback-config.patch
+RUN git apply --check /tmp/ntgcalls-playback-config.patch \
+    && git apply /tmp/ntgcalls-playback-config.patch \
+    && grep -q 'handle_playback_config(id, d, reason, stream_type, is_external)' ntgcalls/src/media/stream_manager.cpp \
+    && sed -i '/openh264::addEncoders/d' wrtc/src/video_factory/video_factory_config.cpp \
     && ! grep -q 'openh264::addEncoders' wrtc/src/video_factory/video_factory_config.cpp \
-    && echo "openh264 encoder stripped"
+    && echo "ntgcalls playback routing fixed; openh264 encoder stripped"
 # Build the wheel (downloads prebuilt clang/webrtc/boost/ffmpeg/... then compiles).
 RUN pip wheel . --no-deps -w /wheels && ls -la /wheels
 
