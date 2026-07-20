@@ -205,7 +205,7 @@ class TelegramSignaling:
         return self._accepted.result()
 
     async def confirm_call(self, g_a: bytes, key_fingerprint: int, protocol):
-        """Send phone.confirmCall. Returns (connections, library_versions, p2p_allowed)."""
+        """Send phone.confirmCall and return its complete P2P parameters."""
         if self._call_id is None:
             raise RuntimeError("no active call to confirm")
         confirmed = await self._client.invoke(
@@ -218,7 +218,13 @@ class TelegramSignaling:
         )
         pc = confirmed.phone_call
         log.info("phone.confirmCall ok, fingerprint=%x", key_fingerprint & 0xFFFFFFFFFFFFFFFF)
-        return pc.connections, pc.protocol.library_versions, pc.p2p_allowed
+        custom = getattr(pc, "custom_parameters", None)
+        return (
+            pc.connections,
+            pc.protocol.library_versions,
+            pc.p2p_allowed,
+            custom.data if custom else None,
+        )
 
     # ---- incoming call (TG→SIP): we are the callee ------------------------
 

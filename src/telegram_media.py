@@ -133,12 +133,6 @@ class TelegramMedia:
         await self._ntg.set_stream_sources(
             user_id, ntgcalls.StreamMode.CAPTURE, self._capture_media()
         )
-        # connect_p2p calls optimizeSources(), which enables incoming audio only
-        # when a PLAYBACK writer already exists. Configuring this afterwards
-        # leaves the remote track disabled and sends silence toward SIP.
-        await self._ntg.set_stream_sources(
-            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
-        )
 
     async def init_exchange(self, user_id: int, g: int, p: bytes, random: bytes,
                             g_a_hash: Optional[bytes] = None) -> bytes:
@@ -153,11 +147,17 @@ class TelegramMedia:
         ``g_a_or_b`` (our g_a) and ``key_fingerprint`` go into phone.confirmCall."""
         return await self._ntg.exchange_keys(user_id, g_b, fingerprint)
 
-    async def connect(self, user_id: int, connections, versions, p2p_allowed: bool) -> None:
+    async def connect(self, user_id: int, connections, versions, p2p_allowed: bool,
+                      custom_parameters: Optional[str] = None) -> None:
         servers = _build_servers(connections)
-        # ntgcalls v2.2+ added a 6th param `custom_parameters` (e.g. for the KCP
-        # experiment); we don't use any so pass None.
-        await self._ntg.connect_p2p(user_id, servers, list(versions), p2p_allowed, None)
+        await self._ntg.connect_p2p(
+            user_id, servers, list(versions), p2p_allowed, custom_parameters
+        )
+        # Match PyTgCalls' record() flow: attach the remote sink after the P2P
+        # connection has negotiated its incoming tracks.
+        await self._ntg.set_stream_sources(
+            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
+        )
         # Signaling object now exists; start ordered relay of both directions.
         # Any incoming blobs received earlier are still queued and get replayed.
         self._sig_out_task = asyncio.create_task(self._sig_out_pump())
