@@ -101,10 +101,20 @@ class TelegramMedia:
         self._sig_in_queue: asyncio.Queue = asyncio.Queue()
         self._sig_out_task: Optional[asyncio.Task] = None
         self._sig_in_task: Optional[asyncio.Task] = None
+        self._send_signaling = getattr(
+            self._ntg, "send_signaling_data",
+            getattr(self._ntg, "send_signaling", None),
+        )
 
         self._ntg.on_frames(self._on_frames)
         self._ntg.on_connection_change(self._on_connection_change)
-        self._ntg.on_signaling(self._on_signaling)
+        on_signaling = getattr(
+            self._ntg, "on_signaling_data",
+            getattr(self._ntg, "on_signaling", None),
+        )
+        if on_signaling is None or self._send_signaling is None:
+            raise RuntimeError("ntgcalls signaling API is unavailable")
+        on_signaling(self._on_signaling)
         self._ntg.on_remote_source_change(self._on_remote_source_change)
 
     def set_state_callback(self, cb: Callable[[str], None]) -> None:
@@ -152,9 +162,8 @@ class TelegramMedia:
     async def connect(self, user_id: int, connections, versions, p2p_allowed: bool,
                       custom_parameters: Optional[str] = None) -> None:
         servers = _build_servers(connections)
-        # NTgCalls 2.1.0 predates Telegram's custom_parameters argument.
         await self._ntg.connect_p2p(
-            user_id, servers, list(versions), p2p_allowed
+            user_id, servers, list(versions), p2p_allowed, custom_parameters
         )
         # The known-working 1.3/2.1 flow attaches the remote sink after
         # connect_p2p has created the P2P connection, but before ICE signaling.
@@ -282,7 +291,7 @@ class TelegramMedia:
                 log.debug("signaling: first incoming blob → ntgcalls (%d bytes)", len(data))
             if self._user_id is not None:
                 try:
-                    await self._ntg.send_signaling(self._user_id, data)
+                    await self._send_signaling(self._user_id, data)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:  # noqa: BLE001

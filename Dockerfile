@@ -39,9 +39,9 @@ RUN make python \
 # rebuild. All heavy deps (WebRTC, Clang, Boost, ffmpeg, GLib, X11, Mesa) are
 # downloaded prebuilt by cmake — only the small wrapper compiles here.
 FROM python:3.11-slim-bookworm AS ntgcalls-build
-# Pinned to the engine in the repository's working-audio-video-2.1.0-custom
-# tag. The 2.2.x receive path emits correctly timed but all-zero P2P PCM here.
-ARG NTGCALLS_VERSION=17f755231a3dab27c121153eab4b155639d24fcb
+# Current dev includes WebRTC m150 and the latest P2P receive/E2E fixes needed
+# by current Telegram clients. Keep this immutable SHA until a release includes it.
+ARG NTGCALLS_VERSION=029f0a90e7bcdc6b32b679fb9ccdaf22ebabf151
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates build-essential python3-dev \
     libasound2-dev libpulse-dev flex libelf-dev texinfo \
