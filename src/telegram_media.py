@@ -162,6 +162,12 @@ class TelegramMedia:
     async def connect(self, user_id: int, connections, versions, p2p_allowed: bool,
                       custom_parameters: Optional[str] = None) -> None:
         servers = _build_servers(connections)
+        if custom_parameters is None:
+            # Docker hosts commonly have dozens of bridge interfaces. Letting
+            # WebRTC enumerate all of them floods V2 signaling with candidates
+            # before the peer's NegotiateChannels answer can be processed.
+            custom_parameters = '{"network_use_default_route":true}'
+            log.info("ntgcalls using default-route-only ICE candidates")
         await self._ntg.connect_p2p(
             user_id, servers, list(versions), p2p_allowed, custom_parameters
         )
