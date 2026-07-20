@@ -82,6 +82,7 @@ class TelegramMedia:
         self._rx_non_silent_frames = 0
         self._tx_frames = 0
         self._tx_bytes = 0
+        self._connected = asyncio.Event()
         self._on_state: Optional[Callable[[str], None]] = None
         self._sig_sender = None
         self._tx_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
@@ -104,6 +105,7 @@ class TelegramMedia:
         self._ntg.on_frames(self._on_frames)
         self._ntg.on_connection_change(self._on_connection_change)
         self._ntg.on_signaling(self._on_signaling)
+        self._ntg.on_remote_source_change(self._on_remote_source_change)
 
     def set_state_callback(self, cb: Callable[[str], None]) -> None:
         """cb(state_name) — fired (on an ntgcalls thread) on connection change."""
@@ -153,8 +155,9 @@ class TelegramMedia:
         await self._ntg.connect_p2p(
             user_id, servers, list(versions), p2p_allowed, custom_parameters
         )
+        await asyncio.wait_for(self._connected.wait(), timeout=30.0)
         # Match PyTgCalls' record() flow: attach the remote sink after the P2P
-        # connection has negotiated its incoming tracks.
+        # connection reaches CONNECTED and has negotiated its incoming tracks.
         await self._ntg.set_stream_sources(
             user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
         )
@@ -287,8 +290,18 @@ class TelegramMedia:
         state = getattr(net_info, "state", net_info)
         name = getattr(state, "name", str(state))
         log.info("ntgcalls connection state=%s", name)
+        if name.upper() == "CONNECTED":
+            self._loop.call_soon_threadsafe(self._connected.set)
         if self._on_state:
             self._on_state(name)
+
+    def _on_remote_source_change(self, chat_id, source) -> None:
+        device = getattr(source, "device", None)
+        if device != ntgcalls.StreamDevice.MICROPHONE:
+            return
+        state = getattr(source, "state", None)
+        name = getattr(state, "name", str(state))
+        log.info("ntgcalls remote microphone state=%s", name)
 
     def _audio_external(self) -> "ntgcalls.AudioDescription":
         # NOTE the 1.3.4 arg order: (media_source, sample_rate, channel_count, input).
