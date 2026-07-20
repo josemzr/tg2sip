@@ -20,6 +20,7 @@ Direction handling:
 from __future__ import annotations
 
 import logging
+import struct
 import threading
 
 log = logging.getLogger(__name__)
@@ -39,13 +40,18 @@ class JitterBuffer:
         self.pulled = 0
         self.underruns = 0
         self.dropped = 0
+        self.input_peak = 0
+        self.output_peak = 0
+        self.signal_pulls = 0
 
     def push(self, data: bytes) -> None:
         if not data:
             return
+        peak = _pcm16le_peak(data)
         with self._lock:
             self._buf.extend(data)
             self.pushed += len(data)
+            self.input_peak = max(self.input_peak, peak)
             overflow = len(self._buf) - self._max
             if self._max and overflow > 0:
                 del self._buf[:overflow]
@@ -58,13 +64,24 @@ class JitterBuffer:
                 out = bytes(self._buf[:n])
                 del self._buf[:n]
                 self.pulled += n
-                return out
-            out = bytes(self._buf) + b"\x00" * (n - have)
-            self._buf.clear()
-            self.underruns += 1
-            self.pulled += have
+            else:
+                out = bytes(self._buf) + b"\x00" * (n - have)
+                self._buf.clear()
+                self.underruns += 1
+                self.pulled += have
+            peak = _pcm16le_peak(out)
+            self.output_peak = max(self.output_peak, peak)
+            if peak:
+                self.signal_pulls += 1
             return out
 
     def clear(self) -> None:
         with self._lock:
             self._buf.clear()
+
+
+def _pcm16le_peak(data: bytes) -> int:
+    usable = len(data) & ~1
+    if not usable:
+        return 0
+    return max(abs(sample[0]) for sample in struct.iter_unpack("<h", data[:usable]))

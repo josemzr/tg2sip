@@ -481,11 +481,14 @@ class TelegramMedia:
         log.info(
             "bridge summary: sip→tg frames=%d bytes=%d; "
             "tg→sip frames=%d bytes=%d non_silent_frames=%d; "
-            "playback pushed=%d pulled=%d underruns=%d dropped=%d",
+            "playback pushed=%d pulled=%d underruns=%d dropped=%d "
+            "input_peak=%d output_peak=%d signal_pulls=%d",
             self._tx_frames, self._tx_bytes,
             self._rx_frames, self._rx_bytes, self._rx_non_silent_frames,
             self._playback.pushed, self._playback.pulled,
             self._playback.underruns, self._playback.dropped,
+            self._playback.input_peak, self._playback.output_peak,
+            self._playback.signal_pulls,
         )
         proc = self._video_proc
         self._video_proc = None  # reader thread (daemon) exits on EOF
