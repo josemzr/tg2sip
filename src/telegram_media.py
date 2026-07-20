@@ -145,6 +145,11 @@ class TelegramMedia:
         await self._ntg.set_stream_sources(
             user_id, ntgcalls.StreamMode.CAPTURE, self._capture_media()
         )
+        # connect_p2p calls optimize_sources(), which only enables incoming
+        # audio when the PLAYBACK microphone writer already exists.
+        await self._ntg.set_stream_sources(
+            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
+        )
 
     async def init_exchange(self, user_id: int, g: int, p: bytes, random: bytes,
                             g_a_hash: Optional[bytes] = None) -> bytes:
@@ -164,11 +169,6 @@ class TelegramMedia:
         servers = _build_servers(connections)
         await self._ntg.connect_p2p(
             user_id, servers, list(versions), p2p_allowed, custom_parameters
-        )
-        # The known-working 1.3/2.1 flow attaches the remote sink after
-        # connect_p2p has created the P2P connection, but before ICE signaling.
-        await self._ntg.set_stream_sources(
-            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
         )
         # Signaling object now exists; start ordered relay of both directions.
         # ICE needs these pumps running in order to reach CONNECTED. Any incoming
@@ -215,7 +215,7 @@ class TelegramMedia:
                 pass
 
     async def _tx_pump(self) -> None:
-        frame_data = ntgcalls.FrameData(0, 0, 0, 0)
+        frame_data = ntgcalls.FrameData()
         while True:
             chunk = await self._tx_queue.get()
             if chunk is None or self._user_id is None:
@@ -471,7 +471,9 @@ class TelegramMedia:
             try:
                 await self._ntg.send_external_frame(
                     self._user_id, ntgcalls.StreamDevice.CAMERA,
-                    frame, ntgcalls.FrameData(ms, 0, w, h),
+                    frame, ntgcalls.FrameData(
+                        ms, ntgcalls.VideoRotation.VIDEO_ROTATION_0, w, h
+                    ),
                 )
                 sent += 1
                 if sent == 1:
