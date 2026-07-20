@@ -145,11 +145,6 @@ class TelegramMedia:
         await self._ntg.set_stream_sources(
             user_id, ntgcalls.StreamMode.CAPTURE, self._capture_media()
         )
-        # connect_p2p calls optimize_sources(), which only enables incoming
-        # audio when the PLAYBACK microphone writer already exists.
-        await self._ntg.set_stream_sources(
-            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
-        )
 
     async def init_exchange(self, user_id: int, g: int, p: bytes, random: bytes,
                             g_a_hash: Optional[bytes] = None) -> bytes:
@@ -176,6 +171,11 @@ class TelegramMedia:
         self._sig_out_task = asyncio.create_task(self._sig_out_pump())
         self._sig_in_task = asyncio.create_task(self._sig_in_pump())
         await asyncio.wait_for(self._connection_ready, timeout=30.0)
+        # Match PyTgCalls record(): attach the remote sink only after the P2P
+        # connection and its incoming audio track are established.
+        await self._ntg.set_stream_sources(
+            user_id, ntgcalls.StreamMode.PLAYBACK, self._playback_media()
+        )
         log.info("ntgcalls connect_p2p done (%d servers)", len(servers))
 
     # ---- audio --------------------------------------------------------------
