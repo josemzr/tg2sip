@@ -82,7 +82,7 @@ class TelegramMedia:
         self._rx_non_silent_frames = 0
         self._tx_frames = 0
         self._tx_bytes = 0
-        self._connected = asyncio.Event()
+        self._connection_ready = loop.create_future()
         self._on_state: Optional[Callable[[str], None]] = None
         self._sig_sender = None
         self._tx_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
@@ -149,13 +149,15 @@ class TelegramMedia:
         ``g_a_or_b`` (our g_a) and ``key_fingerprint`` go into phone.confirmCall."""
         return await self._ntg.exchange_keys(user_id, g_b, fingerprint)
 
-    async def connect(self, user_id: int, connections, versions, p2p_allowed: bool,
-                      custom_parameters: Optional[str] = None) -> None:
+    async def connect(self, user_id: int, connections, versions, p2p_allowed: bool) -> None:
         servers = _build_servers(connections)
+        # Telegram's custom network flags select standalone reflectors on some
+        # accounts, which repeatedly time out in this deployment. The default
+        # NTgCalls route is stable and was used by the original integration.
         await self._ntg.connect_p2p(
-            user_id, servers, list(versions), p2p_allowed, custom_parameters
+            user_id, servers, list(versions), p2p_allowed, None
         )
-        await asyncio.wait_for(self._connected.wait(), timeout=30.0)
+        await asyncio.wait_for(self._connection_ready, timeout=30.0)
         # Match PyTgCalls' record() flow: attach the remote sink after the P2P
         # connection reaches CONNECTED and has negotiated its incoming tracks.
         await self._ntg.set_stream_sources(
@@ -290,10 +292,26 @@ class TelegramMedia:
         state = getattr(net_info, "state", net_info)
         name = getattr(state, "name", str(state))
         log.info("ntgcalls connection state=%s", name)
-        if name.upper() == "CONNECTED":
-            self._loop.call_soon_threadsafe(self._connected.set)
+        upper_name = name.upper()
+        if upper_name == "CONNECTED":
+            self._loop.call_soon_threadsafe(
+                self._finish_connection, None
+            )
+        elif any(token in upper_name for token in ("FAIL", "TIMEOUT", "CLOSED")):
+            self._loop.call_soon_threadsafe(
+                self._finish_connection,
+                RuntimeError(f"ntgcalls connection failed: {name}"),
+            )
         if self._on_state:
             self._on_state(name)
+
+    def _finish_connection(self, error: Optional[Exception]) -> None:
+        if self._connection_ready.done():
+            return
+        if error is None:
+            self._connection_ready.set_result(None)
+        else:
+            self._connection_ready.set_exception(error)
 
     def _on_remote_source_change(self, chat_id, source) -> None:
         device = getattr(source, "device", None)
