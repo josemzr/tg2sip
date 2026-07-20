@@ -39,11 +39,11 @@ RUN make python \
 # rebuild. All heavy deps (WebRTC, Clang, Boost, ffmpeg, GLib, X11, Mesa) are
 # downloaded prebuilt by cmake — only the small wrapper compiles here.
 FROM python:3.11-slim-bookworm AS ntgcalls-build
-# Pinned to the v12/v13 protocol support commit on `dev` (pytgcalls/ntgcalls
-# issue #46). Bump together with config library_versions when upstream tags a
-# new release. Accepts a tag, branch, or commit SHA — the init+fetch pattern
-# below works for any of them (a plain `git clone --branch` does not accept SHAs).
-ARG NTGCALLS_VERSION=a1527b62269b6072a665427b0abc0301c11f21b6
+# Pinned after v12/v13 protocol support and WRTC E2E frame decryption landed on
+# `dev` (pytgcalls/ntgcalls issues #46 and #44). Earlier commits connect but
+# decode incoming encrypted audio as silence. Bump together with config
+# library_versions. The init+fetch pattern accepts tags, branches, and SHAs.
+ARG NTGCALLS_VERSION=88a09d3a7b2f87a1a62afc1c2a967c24617f9be8
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl ca-certificates build-essential python3-dev \
     libasound2-dev libpulse-dev flex libelf-dev texinfo \
